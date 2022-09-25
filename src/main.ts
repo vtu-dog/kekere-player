@@ -98,21 +98,28 @@ let window: AspectRatioBrowserWindow;
 // we're ready to go
 app.whenReady().then(async () => {
     const res = await fetch(`https://${domain}/.well-known-streams`);
+
     if (!res.ok) {
         dialog.showErrorBox('Error', `Failed to fetch stream titles.`);
         app.quit();
+    } else {
+        titles = await res.json();
+
+        const streams = await getStreams(titles);
+
+        if (streams.length === 0) {
+            dialog.showErrorBox('Error', `No streams are currently available.`);
+            app.quit();
+        } else {
+            window = createWindow();
+
+            window.webContents.on('did-finish-load', () => {
+                window.webContents.send('init', {
+                    data: JSON.stringify(streams)
+                });
+            });
+        }
     }
-    titles = await res.json();
-
-    const streams = await getStreams(titles);
-
-    window = createWindow();
-
-    window.webContents.on('did-finish-load', () => {
-        window.webContents.send('init', {
-            data: JSON.stringify(streams)
-        });
-    });
 });
 
 // respond to requests for viewer count
