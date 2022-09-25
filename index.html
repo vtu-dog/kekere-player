@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- load OvenPlayer via CDN -->
+        <script src="https://cdn.jsdelivr.net/npm/ovenplayer/dist/ovenplayer.js"></script>
+        <link
+            rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css"
+            integrity="sha512-xh6O/CkQoPOWDdYTDqeRdPCVd1SpvCA9XXcUnZS2FmJNp1coAFzvtCN9BmamE+4aHK8yyUHUSCcJHgXloTyT2A=="
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"
+        />
+        <title>KekerePlayer</title>
+    </head>
+
+    <style>
+        :root {
+            --controls-padding: 50px;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            -webkit-app-region: none;
+        }
+
+        .drag {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: var(--controls-padding);
+            left: 0;
+            width: 100vw;
+            -webkit-app-region: drag;
+        }
+
+        .op-progressbar-container {
+            display: none !important;
+        }
+
+        .viewer-counter {
+            display: none;
+            color: rgba(255, 0, 0, 0.561);
+            font-weight: bold;
+            position: absolute;
+            top: 2vh;
+            right: 1vw;
+            z-index: 999999;
+        }
+
+        .viewer-counter::after {
+            font-family: 'FontAwesome';
+            content: ' \00f06e';
+        }
+    </style>
+
+    <body>
+        <!--
+            OvenPlayer will be initialized inside this element
+            wrapper div is necessary for the drag functionality to work
+        -->
+        <div>
+            <div class="viewer-counter">2</div>
+            <div class="drag" />
+            <div>
+                <div id="player" />
+            </div>
+        </div>
+
+        <script>
+            // quit the player if the user presses 'q'
+            document.addEventListener('keydown', (event) => {
+                if (event.keyCode === 81) {
+                    api.send('quit');
+                }
+            });
+
+            // prevent the user from right-clicking...
+            document.addEventListener('contextmenu', (event) =>
+                event.preventDefault()
+            );
+
+            // ...and selecting parts of the page
+            document.addEventListener('selectstart', (event) =>
+                event.preventDefault()
+            );
+
+            // get stream URLs from the main process
+            function getSources(data) {
+                let streams = JSON.parse(data.data);
+                let sources = [];
+
+                for (stream of streams) {
+                    sources.push({
+                        label: stream.title,
+                        type: 'webrtc',
+                        file: stream.url,
+                        streamName: stream.name
+                    });
+                }
+
+                // sort sources by label
+                sources.sort((a, b) => {
+                    if (a.label < b.label) {
+                        return -1;
+                    }
+                    if (a.label > b.label) {
+                        return 1;
+                    }
+                    return 0;
+                });
+
+                return sources;
+            }
+
+            // receive streamURL from Electron via IPC
+            window.api.receive('init', (data) => {
+                let sources = getSources(data);
+
+                // initialize OvenPlayer
+                const player = OvenPlayer.create('player', {
+                    autoStart: true,
+                    autoFallback: true,
+                    mute: false,
+                    sources: sources,
+                    webrtcConfig: {
+                        timeoutMaxRetry: 10,
+                        connectionTimeout: 3000
+                    }
+                });
+
+                // change lost connection message
+                player.getConfig().systemText.api.error[511].message =
+                    'Stream connection could not be established.';
+
+                // toggle fullscreen when the user presses 'f'
+                document.addEventListener('keydown', (event) => {
+                    if (event.keyCode === 70) {
+                        player.toggleFullScreen();
+                    }
+                });
+
+                // update viewer counter every 5 seconds
+                setInterval(() => {
+                    let currentSource = player.getCurrentSource();
+                    let streamName = sources[currentSource].streamName;
+                    window.api.send('getViewerCount', streamName);
+                }, 5000);
+
+                // receive viewer count via IPC
+                window.api.receive('viewerCount', (data) => {
+                    let numViewers = JSON.parse(data.data);
+                    let elem = document.querySelector('.viewer-counter');
+
+                    if (numViewers == 0 || numViewers == 1) {
+                        elem.style.display = 'none';
+                    } else {
+                        elem.innerHTML = numViewers;
+                        elem.style.display = 'block';
+                    }
+                });
+            });
+        </script>
+    </body>
+</html>
