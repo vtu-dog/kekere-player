@@ -37,8 +37,8 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             spellcheck: false
         },
-        width: 1279,
-        height: 720,
+        width: 1281,
+        height: 722,
         frame: false,
         resizable: true
     });
